@@ -1,0 +1,64 @@
+HOW TO CALL A ADOBE FORMS IN A ABAP PROGRAM:
+ 
+    "Declarations
+    CONSTANTS c_fname TYPE fpname VALUE 'ZAF_ORDEM_CARREGAMENTO'.
+    DATA: ls_form          TYPE zsd_s_af_ordem_carga,
+          ls_docparams     TYPE sfpdocparams,
+          ls_outputparams  TYPE sfpoutputparams,
+          ls_interfacetype TYPE fpinterfacetype,
+          ls_formout       TYPE fpformoutput,
+          lv_function      TYPE rs38l_fnam.
+    "Getting the form output data
+    ls_form = get_form_information( ).
+    "Getting the FM name
+    CALL FUNCTION 'FP_FUNCTION_MODULE_NAME'
+      EXPORTING
+        i_name           = c_fname
+      IMPORTING
+        e_funcname       = lv_function
+        e_interface_type = ls_interfacetype.
+    IF sy-subrc <> 0.
+      MESSAGE 'Erro no formulário.' TYPE 'E'.
+    ENDIF.
+    "Opening a job
+    CALL FUNCTION 'FP_JOB_OPEN'
+      CHANGING
+        ie_outputparams = ls_outputparams
+      EXCEPTIONS
+        cancel          = 1
+        usage_error     = 2
+        system_error    = 3
+        internal_error  = 4
+        OTHERS          = 5.
+    IF sy-subrc <> 0.
+      MESSAGE 'Erro na FM FP_JOB_OPEN.' TYPE 'E'.
+    ENDIF.
+    "Form parameters
+    CLEAR: ls_docparams.
+    ls_docparams-langu    = 'PT'.
+    ls_docparams-country  = 'BR'.
+    "Generating the form
+    CALL FUNCTION lv_function
+      EXPORTING
+       /1bcdwb/docparams  = ls_docparams
+       is_form            = ls_form
+      IMPORTING
+       /1bcdwb/formoutput = ls_formout
+      EXCEPTIONS
+        usage_error        = 1
+        system_error       = 2
+        internal_error     = 3
+        OTHERS             = 4.
+    IF sy-subrc <> 0.
+      MESSAGE 'Erro na geração do formulário.' TYPE 'E'.
+    ENDIF.
+    "Closing the job
+    CALL FUNCTION 'FP_JOB_CLOSE'
+      EXCEPTIONS
+        usage_error    = 1
+        system_error   = 2
+        internal_error = 3
+        OTHERS         = 4.
+    IF sy-subrc <> 0.
+      MESSAGE 'Erro ao fechar o job.' TYPE 'E'.
+    ENDIF.
