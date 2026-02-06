@@ -1,0 +1,63 @@
+IMPLEMENTAÇÃO DE UM TOOLBAR CUSTOM COM CLASS CL_GUI_TOOLBAR (OO ALV):
+ 
+INCLUDE TOP:
+ 
+CLASS: lcl_program DEFINITION DEFERRED,
+            lcl_handler DEFINITION DEFERRED.
+ 
+DATA: go_program        TYPE REF TO lcl_program,
+          go_toolbar        TYPE REF TO cl_gui_toolbar,
+          go_handler        TYPE REF TO lcl_handler.
+          go_alv              TYPE REF TO cl_gui_alv_grid,
+          go_custom_container TYPE REF TO cl_gui_custom_container.
+ 
+ 
+INCLUDE C01:
+ 
+CLASS lcl_program DEFINITION.
+  PUBLIC SECTION.
+    METHODS:
+  PRIVATE SECTION.
+    METHODS:
+      handle_toolbar FOR EVENT toolbar OF cl_gui_alv_grid
+                               IMPORTING e_object
+                                                   e_interactive.
+ENDCLASS.
+ 
+CLASS lcl_handler DEFINITION.
+  PUBLIC SECTION.
+    METHODS:
+      on_user_command FOR EVENT user_command OF cl_gui_alv_grid
+        IMPORTING e_ucomm.
+ENDCLASS.
+ 
+CLASS lcl_program IMPLEMENTATION.
+ 
+  METHOD handle_toolbar.
+    DATA: ls_toolbar TYPE stb_button.
+    CLEAR ls_toolbar.
+    MOVE 'GERAR_CARGA' TO ls_toolbar-function.
+    MOVE icon_ws_truck TO ls_toolbar-icon.
+    MOVE 0             TO ls_toolbar-butn_type.
+    MOVE ' Gerar carga' TO ls_toolbar-text.
+    APPEND ls_toolbar  TO e_object->mt_toolbar.
+  ENDMETHOD.
+ 
+ 
+  METHOD register_events_grid.
+    CREATE OBJECT go_handler.
+    SET HANDLER go_program->handle_toolbar FOR go_alv.
+    SET HANDLER go_handler->on_user_command FOR go_alv.
+  ENDMETHOD.
+ 
+ENDCLASS.
+ 
+CLASS lcl_handler IMPLEMENTATION.
+  METHOD on_user_command.
+    CASE e_ucomm.
+      WHEN 'GERAR_CARGA'.
+        BREAK-POINT.
+        MESSAGE 'Implementar método para gerar a carga' TYPE 'I'.
+    ENDCASE.
+  ENDMETHOD.
+ENDCLASS.
