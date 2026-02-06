@@ -1,0 +1,9 @@
+ni     nome_arquivo.txt      # cria arquivo
+code   arquivo.txt    # cria/abre no VS Code
+mkdir  pasta         # cria pasta
+
+Depois:
+
+git add .
+git commit -m "msg"
+git push
