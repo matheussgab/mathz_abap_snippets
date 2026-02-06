@@ -1,0 +1,5 @@
+COND dentro de append value:
+ 
+          APPEND VALUE zsewm_001( documento_vbeln       = <fs_lips>-documento  quantidade_disponivel = COND ( WHEN it_scwm_aqua is NOT INITIAL THEN it_scwm_aqua[ matnr = <fs_lips>-matnr ]-quantidade_disponivel
+ELSE 0 )
+ ) TO et_output.

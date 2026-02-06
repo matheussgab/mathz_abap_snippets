@@ -1,0 +1,7 @@
+TABLES mara.
+DO.
+  SELECT SINGLE * FROM mara.
+  IF 1 = 2.
+    EXIT.
+  ENDIF.
+ENDDO.

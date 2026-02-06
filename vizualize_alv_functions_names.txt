@@ -1,0 +1,3 @@
+COMO VIZUALIZAR OS BOTÕES DO ALV:
+ 
+depois do do set table for first display -> objeto do ALV -> MT_TOOLBAR -> todas as funções que estarão disponíveis no alv.

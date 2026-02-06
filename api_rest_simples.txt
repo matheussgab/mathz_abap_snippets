@@ -1,0 +1,104 @@
+criar uma classe normal.
+
+em interfaces, colocar if_http_extension.
+
+implementar o handle_request.
+
+METHOD if_http_extension~handle_request.
+  " Declarations
+  DATA: lv_path          TYPE string,
+        lt_path          TYPE STANDARD TABLE OF string,
+        lv_params        TYPE string,
+        lv_remote_addr   TYPE string,
+        lv_request_body  TYPE string,
+        lv_method        TYPE string,
+        lt_header        TYPE tihttpnvp,
+        ls_header        LIKE LINE OF lt_header,
+        lv_response_body TYPE string,
+        ls_request       TYPE zsmm16_payload.
+
+  DATA: lv_date_ini TYPE dats,
+        lv_date_fim TYPE dats,
+        lv_centro   TYPE werks_d,
+        lv_matnr    TYPE matnr.
+
+  " request headers
+  server->request->get_header_fields( CHANGING fields = lt_header ).
+
+  TRY.
+      ASSIGN lt_header[ name = '~request_uri' ] TO FIELD-SYMBOL(<fs_header>).
+      IF <fs_header> IS ASSIGNED.
+        lv_path = <fs_header>-value.
+      ENDIF.
+    CATCH cx_sy_itab_line_not_found.
+
+  ENDTRY.
+
+  UNASSIGN <fs_header>.
+
+  TRY.
+      ASSIGN lt_header[ name = '~remote_addr' ] TO <fs_header>.
+      IF <fs_header> IS ASSIGNED.
+        lv_remote_addr = <fs_header>-value.
+      ENDIF.
+    CATCH cx_sy_itab_line_not_found.
+
+  ENDTRY.
+
+  " request body
+  lv_request_body = server->request->get_cdata( ).
+
+  /ui2/cl_json=>deserialize(
+    EXPORTING
+      json             =  lv_request_body    " JSON string
+    CHANGING
+      data             = ls_request ).       " Data to serialize
+
+  " Getting payload data
+  lv_date_ini = ls_request-data_ini.
+  lv_date_fim = ls_request-data_fim.
+  lv_centro   = ls_request-cod_centro.
+  lv_matnr    = ls_request-cod_material.
+
+  " Data selection
+  SELECT *
+    INTO TABLE @DATA(lt_mm16_sales)
+    FROM zc_mm16_sales.
+
+  IF lt_mm16_sales IS NOT INITIAL.
+    /ui2/cl_json=>serialize( EXPORTING data = lt_mm16_sales " Data to serialize
+                             RECEIVING r_json = lv_response_body ). " JSON string
+  ELSE.
+    lv_response_body = |Erro ao gerar o json|.
+
+  ENDIF.
+
+  " request method
+  lv_method = server->request->get_method( ).
+  IF lv_method <> 'POST'.
+    server->response->set_status( EXPORTING code = 400 reason = 'Bad Request' ).
+    server->response->set_header_field( EXPORTING name = 'Content-Type' value = 'text/html' ).
+    lv_response_body = 'Método precisa ser POST'.
+    server->response->set_cdata( EXPORTING data = lv_response_body ).
+  ENDIF.
+
+  " response
+  SPLIT lv_path AT '?' INTO lv_path lv_params.
+  SPLIT lv_path AT '/' INTO TABLE lt_path.
+
+  IF lv_path = '/sap/bc/zrest/zapi_mm16_sales' AND lv_method = 'POST'.
+    server->response->set_status( EXPORTING code = 200 reason = 'OK' ).
+    server->response->set_header_field( EXPORTING name = 'Content-Type' value = 'plain/text' ).
+    server->response->set_header_field( EXPORTING name = 'Content-Type' value = 'application/json' ).
+    server->response->set_cdata( EXPORTING data = lv_response_body ).
+
+  ELSE.
+    server->response->set_status( EXPORTING code = 404 reason = 'Page not Found' ).
+    server->response->set_header_field( EXPORTING name = 'Content-Type' value = 'text/html' ).
+    lv_response_body = 'Página não encontrada'.
+    server->response->set_cdata( EXPORTING data = lv_response_body ).
+
+  ENDIF.
+
+ENDMETHOD.
+
