@@ -1,0 +1,91 @@
+METHOD send_email.
+    " Declarations
+    DATA: lo_mime_helper TYPE REF TO cl_gbt_multirelated_service,
+          lo_bcs         TYPE REF TO cl_bcs,
+          lo_doc_bcs     TYPE REF TO cl_document_bcs,
+          lo_recipient   TYPE REF TO if_recipient_bcs,
+          lt_soli        TYPE soli_tab,
+          lv_status      TYPE bcs_rqst,
+          lv_body_html   TYPE string,
+          lv_recipient   TYPE ad_smtpadr.
+
+    lv_body_html =
+      |<!DOCTYPE html PUBLIC "-//IETF//DTD HTML 5.0//EN">| &&
+      |<html><body>| &&
+      |<p>Olá,</p>| &&
+      |<p>Seguem abaixo os usuários bloqueados automaticamente pelo job BLOQ_USERS_INATIVOS | &&
+      |em { sy-datum DATE = ISO } às { sy-uzeit }:</p>|.
+
+    " it_return = tabela TYPE bapiret2_t com os dados do bloqueio
+    LOOP AT it_input ASSIGNING FIELD-SYMBOL(<fs_input>).
+      lv_body_html &&=
+        |<p>{ <fs_input>-message }</p>|.
+    ENDLOOP.
+
+    lv_body_html &&=
+      |<p>Quantidade total: { lines( it_input ) } usuário(s).</p>| &&
+      |</body></html>|.
+
+    TRY.
+
+        " Create the main object of the mail.
+        CREATE OBJECT lo_mime_helper.
+
+        lt_soli = cl_document_bcs=>string_to_soli( lv_body_html ).
+
+        " Set the HTML body of the mail
+        CALL METHOD lo_mime_helper->set_main_html( content = lt_soli ).
+
+        " Set the subject of the mail.
+        lo_doc_bcs = cl_document_bcs=>create_from_multirelated(
+                        i_subject          = 'Usuários bloqueados por job'
+                        i_importance       = '5'                " 1~High Priority  5~Average priority 9~Low priority
+                        i_multirel_service = lo_mime_helper ).
+
+        lo_bcs = cl_bcs=>create_persistent( ).
+        lo_bcs->set_document( i_document = lo_doc_bcs ).
+
+        " Set recipient
+        lv_recipient = p_email.
+
+        " Set the email address
+        lo_recipient = cl_cam_address_bcs=>create_internet_address(
+                          i_address_string = lv_recipient  ).
+
+        lo_bcs->add_recipient( i_recipient = lo_recipient ).
+
+        " In case there is any copies
+        LOOP AT st_cc ASSIGNING FIELD-SYMBOL(<fs_cc>).
+          " Setting the CCs
+          CLEAR lv_recipient.
+          lv_recipient = <fs_cc>-low.
+
+          lo_recipient = cl_cam_address_bcs=>create_internet_address(
+                         i_address_string = lv_recipient ).
+
+          " In fact adding
+          lo_bcs->add_recipient( i_recipient = lo_recipient i_copy = abap_true ).
+
+        ENDLOOP.
+
+        " Change the status.
+        lv_status = 'N'.
+        lo_bcs->set_status_attributes( i_requested_status = lv_status ).
+
+        " Send the email
+        lo_bcs->send( ).
+
+        COMMIT WORK.
+
+      CATCH cx_send_req_bcs " BCS: Send Request Exceptions
+            cx_address_bcs  " BCS: Address Exceptions
+            cx_document_bcs " BCS: Document Exceptions
+            cx_bcom_mime    " Exceptions in MIME Conversion Tool
+            cx_gbt_mime     " MIME Error.INTO DATA(lx_exception).
+            cx_bcs INTO DATA(lx_exception). " Exception superclass
+
+        ROLLBACK WORK.
+
+    ENDTRY.
+
+  ENDMETHOD.

@@ -1,0 +1,7 @@
+MARRETAR TABELA:
+SE16N -> tabela que deseja -> /h 
+ 
+gd-edit = x
+gd-sapedit = x
+ 
+FAZER SOMENTE COM AUTORIZAÇÃO
