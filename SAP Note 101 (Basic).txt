@@ -1,0 +1,15 @@
+SAP NOTE 101 (BASIC)
+
+dump em STANDARD, ver o nome do objeto
+
+sap for me
+
+pesquisar pelo objeto e ver se algo faz sentido.
+
+caso achar alguma nota:
+
+-> SNOTE
+-> PESQUISAR A NOTA
+-> CASO NÃO EXISTA BAIXAR
+-> VER O PRÉ REQUISITOS DA NOTA, CASO TENHA APLICAR
+-> CONSULTAR S4CORE ANTES DE IMPLEMENTAR
