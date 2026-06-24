@@ -1,0 +1,365 @@
+FUNCTION zfm_shipment_cost_create.
+*"----------------------------------------------------------------------
+*"*"Interface local:
+*"  IMPORTING
+*"     VALUE(IV_TKNUM) TYPE  TKNUM
+*"     VALUE(IV_COMMIT) TYPE  FLAG OPTIONAL
+*"  EXPORTING
+*"     VALUE(EV_FKNUM) TYPE  FKNUM
+*"  TABLES
+*"      ET_RETURN STRUCTURE  BAPIRET2
+*"----------------------------------------------------------------------
+  " Declarations
+  DATA: lv_tknum        TYPE vttk-tknum,
+        lv_vttp_exists  TYPE abap_bool,
+        lv_fknum_error  TYPE fknum,
+        lv_fknum_exists TYPE fknum,
+        lv_committed    TYPE abap_bool,
+        ls_vttk         TYPE vttk,
+        ls_tvtk         TYPE tvtk,
+        ls_tvtf         TYPE tvtf,
+        ls_t180         TYPE t180,
+        lv_fkart        TYPE vfkk-fkart,
+        ls_return       TYPE bapiret2,
+        lt_scd_item     TYPE v54a0_scd_item_tab,
+        ls_scd_item     TYPE v54a0_scd_item,
+        lt_refobj_tab   TYPE v54a0_refobj_tab,
+        ls_refobj       TYPE v54a0_refobj,
+        lt_scd_tab      TYPE v54a0_scdd_tab,
+        ls_scd          TYPE v54a0_scdd.
+
+  " Add BAPIRET2 message
+  DEFINE add_return.
+    " Init
+    CLEAR ls_return.
+
+    " Build structure
+    ls_return-type       = &1.
+    ls_return-id         = 'ZB2C'.
+    ls_return-number     = &2.
+    ls_return-message_v1 = &3.
+    ls_return-message_v2 = &4.
+    ls_return-message_v3 = &5.
+    ls_return-message_v4 = &6.
+
+    MESSAGE ID ls_return-id
+          TYPE ls_return-type
+        NUMBER ls_return-number
+          WITH ls_return-message_v1
+               ls_return-message_v2
+               ls_return-message_v3
+               ls_return-message_v4
+          INTO ls_return-message.
+
+    APPEND ls_return TO et_return.
+
+  END-OF-DEFINITION.
+
+  " Error after Shipment Cost creation
+  DEFINE return_scd_error.
+    lv_fknum_error = ev_fknum.
+
+    IF lv_fknum_error IS INITIAL.
+      lv_fknum_error = lv_tknum.
+    ENDIF.
+
+    IF iv_commit = abap_true.
+      ROLLBACK WORK.
+    ENDIF.
+
+    CLEAR ev_fknum.
+
+    add_return 'E' &1 lv_fknum_error space space space.
+    RETURN.
+
+  END-OF-DEFINITION.
+
+  " Init process
+  CLEAR: ev_fknum,
+         et_return[],
+         lv_committed,
+         lv_vttp_exists.
+
+  " Validate tknum
+  IF iv_tknum IS INITIAL.
+    add_return 'E' '410' space space space space.
+    RETURN.
+  ENDIF.
+
+  " Internal variable
+  lv_tknum = iv_tknum.
+
+  CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    EXPORTING
+      input  = lv_tknum
+    IMPORTING
+      output = lv_tknum.
+
+  " Transport Document header information
+  SELECT SINGLE *
+    FROM vttk
+    INTO @ls_vttk
+    WHERE tknum = @lv_tknum.
+
+  IF sy-subrc <> 0.
+    add_return 'E' '411' lv_tknum space space space.
+    RETURN.
+  ENDIF.
+
+  " Check existing Shipment Cost Document
+  CLEAR lv_fknum_exists.
+
+  SELECT SINGLE fknum
+    FROM vfkp
+    INTO @lv_fknum_exists
+    WHERE rebel = @lv_tknum.
+
+  IF sy-subrc = 0 AND lv_fknum_exists IS NOT INITIAL.
+    ev_fknum = lv_fknum_exists.
+
+    add_return 'E' '428' lv_tknum lv_fknum_exists space space.
+    RETURN.
+  ENDIF.
+
+  " Validating transport type
+  IF ls_vttk-shtyp IS INITIAL.
+    add_return 'E' '412' lv_tknum space space space.
+    RETURN.
+  ENDIF.
+
+  " Transport Agent
+  IF ls_vttk-tdlnr IS INITIAL.
+    add_return 'E' '413' lv_tknum space space space.
+    RETURN.
+  ENDIF.
+
+  " Shipment deliveries
+  SELECT SINGLE @abap_true
+    FROM vttp
+    INTO @lv_vttp_exists
+    WHERE tknum = @lv_tknum.
+
+  IF lv_vttp_exists = abap_false.
+    add_return 'E' '423' lv_tknum space space space.
+    RETURN.
+  ENDIF.
+
+  " Search transport type customizing
+  SELECT SINGLE *
+    FROM tvtk
+    INTO @ls_tvtk
+    WHERE shtyp = @ls_vttk-shtyp.
+
+  IF sy-subrc <> 0.
+    add_return 'E' '415' ls_vttk-shtyp space space space.
+    RETURN.
+  ENDIF.
+
+  " Shipment cost relevance
+  IF ls_tvtk-frkrl IS INITIAL.
+    add_return 'E' '424' ls_vttk-shtyp space space space.
+    RETURN.
+  ENDIF.
+
+  " VI01 Context
+  ls_t180 = VALUE #( tcode = 'VI01'
+                     agidv = 'SAPMV54A'
+                     trtyp = 'H'
+                     aktyp = 'H'
+                     bldgr = 'A0'
+                     panel = 'VI01' ).
+
+  " Prepare reference object item
+  CLEAR: lt_scd_item,
+         ls_scd_item,
+         lt_refobj_tab,
+         ls_refobj.
+
+  ls_scd_item-vfkp-rebel = lv_tknum.
+  APPEND ls_scd_item TO lt_scd_item.
+
+  " Read Shipment Cost reference object
+  CALL FUNCTION 'SD_SCD_REFOBJ_READ'
+    EXPORTING
+      i_t180            = ls_t180
+      i_opt_refobj      = abap_true
+      i_opt_refobj_lock = abap_true
+      i_scd_item        = lt_scd_item
+    CHANGING
+      c_refobj_tab      = lt_refobj_tab
+    EXCEPTIONS
+      refobj_not_found  = 1
+      delivery_missing  = 2
+      refobj_lock       = 3
+      OTHERS            = 4.
+
+  IF sy-subrc <> 0.
+    add_return 'E' '426' lv_tknum space space space.
+    RETURN.
+  ENDIF.
+
+  " Read reference object
+  READ TABLE lt_refobj_tab INTO ls_refobj
+    WITH KEY vttkf-tknum = lv_tknum.
+
+  IF sy-subrc <> 0.
+    add_return 'E' '427' lv_tknum space space space.
+    RETURN.
+  ENDIF.
+
+  " Determine Shipment cost type
+  CLEAR: ls_tvtf,
+         lv_fkart.
+
+  CALL FUNCTION 'SD_SCD_TYPE_DETERMINE'
+    EXPORTING
+      i_tvtk         = ls_refobj-tvtk
+      i_refobj       = ls_refobj
+    IMPORTING
+      e_tvtf         = ls_tvtf
+    EXCEPTIONS
+      not_determined = 1
+      not_found      = 2
+      OTHERS         = 3.
+
+  IF sy-subrc <> 0 OR ls_tvtf-fkart IS INITIAL.
+    add_return 'E' '416' lv_tknum space space space.
+    RETURN.
+  ENDIF.
+
+  " Internal variable
+  lv_fkart = ls_tvtf-fkart.
+
+  " Init Shipment Cost Document
+  CLEAR ls_scd.
+
+  CALL FUNCTION 'SD_SCD_INITIALIZE'
+    EXPORTING
+      i_tvtf                   = ls_tvtf
+      i_prsdt                  = sy-datum
+      i_budat                  = sy-datum
+      i_refobj                 = ls_refobj
+    CHANGING
+      c_scd                    = ls_scd
+    EXCEPTIONS
+      planning_point_not_valid = 1
+      scd_type_not_valid       = 2
+      scd_create_not_possible  = 3
+      OTHERS                   = 4.
+
+  IF sy-subrc <> 0.
+    add_return 'E' '414' lv_tknum lv_fkart space space.
+    RETURN.
+  ENDIF.
+
+  " Internal variable
+  IF ls_scd-fknum IS NOT INITIAL.
+    ev_fknum = ls_scd-fknum.
+  ENDIF.
+
+  " Items for Shipment Cost
+  CALL FUNCTION 'SD_SCD_ITEMS_CREATE'
+    EXPORTING
+      i_refobj = ls_refobj
+      i_t180   = ls_t180
+    CHANGING
+      c_scd    = ls_scd
+    EXCEPTIONS
+      OTHERS   = 1.
+
+  IF sy-subrc <> 0.
+    " Standard VI01 continues the process even when item creation returns messages
+    add_return 'W' '429' lv_tknum space space space.
+  ENDIF.
+
+  " Internal variable
+  IF ls_scd-fknum IS NOT INITIAL.
+    ev_fknum = ls_scd-fknum.
+  ENDIF.
+
+  " Change Shipment Cost item
+  " Colocar aqui a chamada da SD_SCD_ITEM_CHANGE conforme o Pattern do teu SAP
+  " O ponto correto é antes de preencher LT_SCD_TAB / antes do SAVE
+
+  " Prepare data for save
+  CLEAR lt_scd_tab.
+  APPEND ls_scd TO lt_scd_tab.
+  SORT lt_scd_tab BY fknum.
+
+  " Save Shipment Cost
+  CALL FUNCTION 'SD_SCDS_SAVE'
+    EXPORTING
+      i_t180                    = ls_t180
+      i_opt_update_task         = abap_true
+      i_opt_release_with_dialog = abap_false
+      i_refobj_tab              = lt_refobj_tab
+    CHANGING
+      c_scd_tab                 = lt_scd_tab
+    EXCEPTIONS
+      no_change                 = 1
+      no_save                   = 2
+      OTHERS                    = 3.
+
+  IF sy-subrc <> 0.
+    return_scd_error '420'.
+  ENDIF.
+
+  " Get created Shipment Cost Document
+  CLEAR ev_fknum.
+
+  READ TABLE lt_scd_tab INTO ls_scd INDEX 1.
+  IF sy-subrc = 0 AND ls_scd-fknum IS NOT INITIAL.
+    ev_fknum = ls_scd-fknum.
+  ENDIF.
+
+  " Commit before DB fallback
+  IF ev_fknum IS INITIAL AND iv_commit = abap_true.
+
+    COMMIT WORK AND WAIT.
+    lv_committed = abap_true.
+
+    IF sy-subrc <> 0.
+      CLEAR ev_fknum.
+
+      add_return 'E' '422' lv_tknum lv_tknum space space.
+      RETURN.
+    ENDIF.
+
+    SELECT SINGLE fknum
+      FROM vfkp
+      INTO @ev_fknum
+      WHERE rebel = @lv_tknum.
+
+  ENDIF.
+
+  IF ev_fknum IS INITIAL.
+
+    IF iv_commit = abap_true AND lv_committed = abap_false.
+      ROLLBACK WORK.
+    ENDIF.
+
+    add_return 'E' '417' lv_tknum space space space.
+    RETURN.
+  ENDIF.
+
+  " Finalize
+  IF iv_commit = abap_true AND lv_committed = abap_false.
+
+    COMMIT WORK AND WAIT.
+    lv_committed = abap_true.
+
+    IF sy-subrc <> 0.
+      lv_fknum_error = ev_fknum.
+
+      CLEAR ev_fknum.
+
+      add_return 'E' '422' lv_fknum_error lv_tknum space space.
+      RETURN.
+    ENDIF.
+
+  ENDIF.
+
+  " Success message
+  add_return 'S' '421' ev_fknum lv_tknum space space.
+
+ENDFUNCTION.
